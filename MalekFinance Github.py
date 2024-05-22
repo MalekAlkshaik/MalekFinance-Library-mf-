@@ -58,7 +58,7 @@ def regression_OLS(y,x,i=0):
 
     Newey West SEs, i ='HC0'
 
-    mf.regression(y,x,'HC0')
+    mf.regression_OLS(y,x,'HC0')
 
     --------------------------------------------
     """
