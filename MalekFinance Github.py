@@ -3,6 +3,7 @@ from scipy.stats import skew
 import MalekFinance as MF
 import pyfolio as pf
 from matplotlib import pyplot as plt
+import numpy as np
 plt.style.use('ggplot')
 
 def drawdowns(x,i=5):
@@ -43,6 +44,55 @@ def drawdowns(x,i=5):
         drawdown_lengths.append(len(pd.date_range(start=start, end=end, freq='M')))
     df['Drawdown Length in Months'] = drawdown_lengths
     df['Drawdown Length in Months'] -=1
+    return df
+
+def read(i,x,index_col=None,parse_dates=False,header=0,dayfirst=None,sheet_name=None):
+    try:
+        return pd.read_csv(f'/Users/malek/Documents/{i}/{x}.csv',index_col=index_col,parse_dates=parse_dates,header=header,dayfirst=dayfirst)
+    except:
+        if sheet_name == None:
+            sheet_name = 'Sheet1'
+        return pd.read_excel(f'/Users/malek/Documents/{i}/{x}.xlsx',index_col=index_col,parse_dates=parse_dates,header=header,sheet_name=sheet_name)
+
+def mvo_weights(x,RF=0,target=1):
+    df = x.copy()
+    l = len(df.columns)
+    cov = df.cov().values
+    if RF == 1:
+        for i in df.columns:
+            df[i] = MF.excess_return(df[i])
+    ER = df.mean().values.reshape(l,1)
+    scailer = target/(np.dot(np.linalg.inv(cov),ER).sum())
+    weights = np.dot(np.linalg.inv(cov),ER)
+    weights*=scailer
+    weights = weights.reshape(1,l)
+    weights = weights.tolist()[0]
+    for i in range(len(weights)):
+        weights[i] = round(weights[i],5)
+    print(dict(zip(df.columns,weights)))
+    return weights
+
+def vectorize(x,weights):
+    portfolio = ((x*weights).sum(axis=1))
+    portfolio = pd.DataFrame(portfolio)
+    portfolio.columns = ['Portfolio']
+    return portfolio
+
+def mvo_DF(x,RF=0,target=1):
+    """
+    --------------------------------------------
+    
+    target=1 as Default
+
+    target is what the weights add upto
+    
+    --------------------------------------------
+    """
+    weights = mvo_weights(x,RF=RF,target=target)
+    df = MF.vectorize(x,weights)
+    df.columns = ['Mean Variance']
+    if RF == 1:
+        df = MF.excess_return(df)
     return df
 
 def regression_OLS(y,x,i=0):
@@ -163,81 +213,7 @@ def RiskFree(x=0):
     else:
         raise ValueError('Error \n\n                   x should = 0 or 1 \n\n                   if x=0 RiskFree Rate from 1926-2023 \n                   if x=1: RiskFree Rate from 1992-2022')
 
-def mvo_weights(x,s,t=0):
-    """
-    --------------------------------------------
 
-    Arguments (x,s,t):
-    x = DataFrame of returns
-    s = lambda function needed
-    t = 0 or 1 if you want summary printed
-
-    --------------------------------------------
-
-    s is important
-
-    example of s:
-    s = [lambda w: w[0]+w[1]+w[2] == 1][0]
-
-    The number of w[x] = the number of series
-
-    --------------------------------------------
-
-    t=0 as Default
-
-    set t=2 for summary and weights
-    
-    --------------------------------------------
-    """
-    from pypfopt.efficient_frontier import EfficientFrontier
-    Tangency_Portfolio = EfficientFrontier(x.mean()*12,x.cov()*12,weight_bounds=(0,1))
-    Tangency_Portfolio.add_constraint(s)
-    weights = Tangency_Portfolio.max_sharpe(risk_free_rate=0.0)
-    weights = Tangency_Portfolio.clean_weights()
-    MVOweights = []
-    for i in x.columns:
-        MVOweights.append(weights[i])
-    if t==1:
-        Tangency_Portfolio.portfolio_performance(verbose=True)
-        print(weights)
-        print(MVOweights)
-    return MVOweights
-
-def mvo_DF(x,s):
-    """
-    --------------------------------------------
-    Description
-
-    returns a DataFrame of the MVO Portfolio
-
-    --------------------------------------------
-
-    Arguments (x,s,t):
-    x = DataFrame of returns
-    s = lambda function needed
-
-    --------------------------------------------
-
-    s is important
-
-    example of s:
-    s = [lambda w: w[0]+w[1]+w[2] == 1][0]
-
-    The number of w[x] = the number of series
-
-    --------------------------------------------
-    """
-    weights = MF.mvo_weights(x,s)
-    MVO = ((x*weights).sum(axis=1))
-    MVO = pd.DataFrame(MVO)
-    MVO.columns = ['Mean Variance']
-    return MVO
-
-def vectorize(x,weights):
-    portfolio = ((x*weights).sum(axis=1))
-    portfolio = pd.DataFrame(portfolio)
-    portfolio.columns = ['Portfolio']
-    return portfolio
 
 def mean(x,i=0):
     return print(f'Annual Return: {"{:.2f}".format(round(x.iloc[:,i][:].mean()*1200,2))}%')
