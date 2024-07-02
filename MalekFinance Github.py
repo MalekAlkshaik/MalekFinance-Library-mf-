@@ -4,6 +4,8 @@ import MalekFinance as MF
 import pyfolio as pf
 from matplotlib import pyplot as plt
 import numpy as np
+import statsmodels.api as sm
+import scipy.stats as ss
 plt.style.use('ggplot')
 
 def drawdowns(x,i=5):
@@ -232,6 +234,69 @@ def summary(x,i=0):
     """
     return (MF.mean(x),MF.vol(x),MF.sharpe(x,i),MF.MDD(x))[0]
 
+def summary_df(df):
+    Mean = pd.DataFrame(df.mean()*12).transpose()
+    Vol = pd.DataFrame(df.std()*(12**0.5)).transpose()
+    Sharpe = pd.DataFrame((df.mean()*12)/(df.std()*(12**0.5))).transpose()
+    MDD = []
+    for i in df.columns:
+        drawdownVW = pd.DataFrame()
+        drawdownVW['cumulative_returns'] = (1 + df[i]).cumprod()
+        drawdownVW['rolling_max'] = drawdownVW['cumulative_returns'].cummax()
+        drawdownVW['drawdown'] = drawdownVW['cumulative_returns'] / drawdownVW['rolling_max'] - 1
+        MDD.append(drawdownVW.drawdown.min())
+    DD = pd.DataFrame(MDD,index=df.columns).transpose()
+    SP = MF.spm()
+    BETAs = []
+    for i in df.columns:
+        x = SP[SP.index.isin(df[i].index)]
+        y = df[i][df[i].index.isin(SP.index)]
+        x = sm.add_constant(x)
+        B = sm.OLS(y,x).fit().params[1]
+        BETAs.append(B)
+    Bs = pd.DataFrame(BETAs,index=df.columns).transpose()
+    df2 = pd.concat([Mean,Vol,Sharpe,DD,Bs])
+    df2.index = [1,2,3,4,5]
+    df2.rename(index={1:'Annual Return'},inplace=True)
+    df2.rename(index={2:'Annual Volity'},inplace=True)
+    df2.rename(index={3:'Sharpe Ratio'},inplace=True)
+    df2.rename(index={4:'Max Drawdown'},inplace=True)
+    df2.rename(index={5:'Portfolio Beta'},inplace=True)
+    df2.iloc[0]*=100
+    df2.iloc[1]*=100
+    df2.iloc[3]*=100
+    df2 = round(df2,2)
+    return df2
+
+def long_short(x,t=0):
+    """
+    t=0 as Default
+
+    if t=0, Column 1 - Column Max
+    if t=1, Column Max - Column 1 
+    """
+    if t == 0:
+        return x.iloc[:,0] - x.iloc[:,len(x.columns) - 1]
+    elif t == 1:
+        return x.iloc[:,len(x.columns) - 1] - x.iloc[:,0]
+    
+def Market_Beta(df):
+    df = pd.DataFrame(df)
+    SP = MF.spm()
+    df = df[df.index.isin(SP.index)]
+    SP = SP[SP.index.isin(df.index)]
+    x = sm.add_constant(SP)
+    Beta = sm.OLS(df,x).fit().params[1]
+    return Beta
+
+def daily_to_monthly(x):
+    log_returns = np.log(x + 1)
+    total_monthly_log_returns = log_returns.resample('M').mean() * log_returns.resample('M').count()
+    monthly_returns = np.exp(total_monthly_log_returns) - 1
+    return monthly_returns
+
+def t_stat(x,i=0):
+    print(f't Statistic: {round(ss.ttest_1samp(x,i)[0][0],4)}')
 
 
 
